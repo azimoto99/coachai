@@ -16,7 +16,7 @@ interface CombatState {
     maxMana: number;
     netWorth: number;
     items: string[];
-    abilities: { name: string; ready: boolean; level: number }[];
+    abilities: { name: string; ready: boolean; level: number; isUltimate: boolean }[];
   };
   enemyHero: {
     level: number;
@@ -152,6 +152,7 @@ export class CombatAnalyzer {
     shouldAdvise: boolean;
     priority: 'HIGH' | 'MEDIUM' | 'LOW';
     advice: string;
+    factors: string[];
   } {
     let winProbability = 0.5; // Start at 50/50
     const factors: string[] = [];
@@ -292,7 +293,7 @@ export class CombatAnalyzer {
       shouldAdvise,
       priority,
       advice,
-      factors: factors.length > 0 ? factors : undefined
+      factors
     };
   }
 

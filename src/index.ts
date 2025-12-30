@@ -10,6 +10,7 @@ import { SteamBot } from './services/steamBot';
 import { postGameAnalyzer } from './services/postGameAnalyzer';
 import { messageFormatter } from './services/messageFormatter';
 import { playerTrustCalibrator } from './services/playerTrustCalibrator';
+import { winrateTracker } from './services/winrateTracker';
 import { CoachingAdvice } from './types/coaching';
 import { ProcessedGameState } from './types/gameState';
 import { logger } from './utils/logger';

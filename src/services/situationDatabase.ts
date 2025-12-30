@@ -514,7 +514,8 @@ export class SituationDatabase {
           const deadEnemies = gs.enemies.filter(e => !e.alive).length;
           const enemyBuildings = gs.buildings[gs.player.team === 'radiant' ? 'dire' : 'radiant'];
           const midT1 = (enemyBuildings.t1 || []).find(t => t.name.toLowerCase().includes('mid'));
-          return deadEnemies >= 4 && midT1 && !midT1.destroyed && gs.hero.alive;
+          if (!midT1) return false;
+          return deadEnemies >= 4 && !midT1.destroyed && gs.hero.alive;
         },
         getAdvice: () => 'Push T1 mid NOW - 4 enemies dead, free tower'
       },
@@ -756,6 +757,46 @@ export class SituationDatabase {
         getAdvice: () => '35min+ - every death critical, play for pickoffs only'
       }
     );
+  }
+
+  private getHeroMatchupBonus(yourHero: any, enemyHero: any): { bonus: number; reason?: string } {
+    // Simplified matchup knowledge
+    const yourHeroName = yourHero.name?.toLowerCase() || '';
+    const enemyHeroName = enemyHero.heroName?.toLowerCase() || '';
+
+    // Some basic matchup knowledge
+    const favorableMatchups: Record<string, string[]> = {
+      'antimage': ['zeus', 'storm', 'queenofpain', 'tinker'],
+      'pudge': ['sniper', 'drow', 'crystal_maiden'],
+      'puck': ['melee_heroes'],
+      'storm_spirit': ['squishy_heroes'],
+    };
+
+    const unfavorableMatchups: Record<string, string[]> = {
+      'antimage': ['slardar', 'bloodseeker'],
+      'pudge': ['pugna', 'tinker'],
+      'storm_spirit': ['silencer', 'doom'],
+    };
+
+    // Check favorable matchups
+    for (const [hero, counters] of Object.entries(favorableMatchups)) {
+      if (yourHeroName.includes(hero)) {
+        if (counters.some(c => enemyHeroName.includes(c))) {
+          return { bonus: 0.10, reason: 'favorable matchup' };
+        }
+      }
+    }
+
+    // Check unfavorable matchups
+    for (const [hero, counters] of Object.entries(unfavorableMatchups)) {
+      if (yourHeroName.includes(hero)) {
+        if (counters.some(c => enemyHeroName.includes(c))) {
+          return { bonus: -0.15, reason: 'unfavorable matchup' };
+        }
+      }
+    }
+
+    return { bonus: 0 };
   }
 
   /**
