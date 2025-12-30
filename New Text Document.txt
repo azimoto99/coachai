@@ -1,0 +1,8 @@
+STEAM_USERNAME=your_bot_steam_username
+STEAM_PASSWORD=your_bot_steam_password
+GSI_PORT=3000
+GSI_TOKEN=your_secure_token_here
+COACH_AGGRESSIVENESS=0.8
+COACH_VOICE_ALERTS=true
+COACH_MAP_DRAWING=false
+LOG_LEVEL=info
