@@ -18,8 +18,17 @@ export class MessageQueue {
     const now = Date.now();
     const timeSinceLastMessage = now - this.lastMessageTime;
 
-    // Game-ending and critical messages bypass rate limits
-    if (advice.priority === 'GAME_ENDING' || advice.priority === 'CRITICAL') {
+    // Game-ending messages bypass rate limits (truly urgent)
+    if (advice.priority === 'GAME_ENDING') {
+      return true;
+    }
+
+    // CRITICAL messages have a minimum 30 second cooldown to prevent spam
+    if (advice.priority === 'CRITICAL') {
+      const criticalCooldown = 30000; // 30 seconds
+      if (timeSinceLastMessage < criticalCooldown) {
+        return false;
+      }
       return true;
     }
 

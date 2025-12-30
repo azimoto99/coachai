@@ -14,6 +14,13 @@ import { messageFormatter } from './messageFormatter';
 import { postGameAnalyzer } from './postGameAnalyzer';
 import { playerTrustCalibrator } from './playerTrustCalibrator';
 import { doNothingDetector } from './doNothingDetector';
+import { itemBuildAdvisor } from './itemBuildAdvisor';
+import { heroSpecificAdvice } from './heroSpecificAdvice';
+import { situationDatabase } from './situationDatabase';
+import { combatAnalyzer } from './combatAnalyzer';
+import { laningCoach } from './laningCoach';
+import { midgameCoach } from './midgameCoach';
+import { lategameCoach } from './lategameCoach';
 import { GAME_PHASES, CS_TARGETS } from '../config/constants';
 import { logger } from '../utils/logger';
 
@@ -40,14 +47,53 @@ export class CoachingEngine {
         logger.debug(`Win condition: ${this.winConditionAnalysis.primaryCondition}`);
       }
 
-      // Priority 1: Anti-throw warnings (highest priority)
+      // Priority 1: Combat analysis (real-time fight calculations)
+      const combatAdvice = combatAnalyzer.analyzeCombat(gameState);
+      if (combatAdvice) {
+        const enriched = this.enrichAdvice(combatAdvice, gameState, 'combat');
+        if (enriched) return enriched;
+      }
+
+      // Priority 2: Phase-specific coaching (laning/mid/late game)
+      const gameTime = gameState.gameTime;
+      if (gameTime < 600) {
+        // Laning phase (0-10 min)
+        const laningAdvice = laningCoach.getAdvice(gameState);
+        if (laningAdvice) {
+          const enriched = this.enrichAdvice(laningAdvice, gameState, 'laning');
+          if (enriched) return enriched;
+        }
+      } else if (gameTime >= 600 && gameTime < 1800) {
+        // Mid game (10-30 min)
+        const midgameAdvice = midgameCoach.getAdvice(gameState);
+        if (midgameAdvice) {
+          const enriched = this.enrichAdvice(midgameAdvice, gameState, 'midgame');
+          if (enriched) return enriched;
+        }
+      } else {
+        // Late game (30+ min)
+        const lategameAdvice = lategameCoach.getAdvice(gameState);
+        if (lategameAdvice) {
+          const enriched = this.enrichAdvice(lategameAdvice, gameState, 'lategame');
+          if (enriched) return enriched;
+        }
+      }
+
+      // Priority 3: Situation database (comprehensive situational checks)
+      const situationAdvice = situationDatabase.checkSituations(gameState);
+      if (situationAdvice) {
+        const enriched = this.enrichAdvice(situationAdvice, gameState, 'situational');
+        if (enriched) return enriched;
+      }
+
+      // Priority 3: Anti-throw warnings (highest priority)
       const throwWarning = antiThrowSystem.checkThrowScenarios(gameState);
       if (throwWarning) {
         const advice = this.enrichAdvice(throwWarning, gameState, 'anti_throw');
         if (advice) return advice;
       }
 
-      // Priority 2: Push windows (game-ending opportunities)
+      // Priority 3: Push windows (game-ending opportunities)
       const pushWindows = pushTimingDetector.detectPushWindows(gameState);
       if (pushWindows.length > 0) {
         const topWindow = pushWindows[0];
@@ -73,7 +119,7 @@ export class CoachingEngine {
         if (enriched) return enriched;
       }
 
-      // Priority 3: Net worth-based recommendations
+      // Priority 4: Net worth-based recommendations
       const netWorthRecommendation = netWorthTracker.getPushRecommendation(
         this.lastNetWorthAnalysis,
         gameState
@@ -90,21 +136,42 @@ export class CoachingEngine {
         if (enriched) return enriched;
       }
 
-      // Priority 4: Phase-specific coaching
+      // Priority 5: Phase-specific coaching
       const phaseAdvice = phaseCoaching.getAdvice(gameState, this.gamePhase, this.winConditionAnalysis);
       if (phaseAdvice) {
         const enriched = this.enrichAdvice(phaseAdvice, gameState, 'phase_coaching');
         if (enriched) return enriched;
       }
 
-      // Priority 5: General strategic advice
+      // Priority 6: Item build recommendations
+      const itemAdvice = itemBuildAdvisor.getRecommendations(gameState);
+      if (itemAdvice) {
+        const enriched = this.enrichAdvice(itemAdvice, gameState, 'item_build');
+        if (enriched) return enriched;
+      }
+
+      // Priority 7: Hero-specific advice
+      const heroAdvice = heroSpecificAdvice.getAdvice(gameState);
+      if (heroAdvice) {
+        const enriched = this.enrichAdvice(heroAdvice, gameState, 'hero_specific');
+        if (enriched) return enriched;
+      }
+
+      // Priority 8: Ability usage tips
+      const abilityTips = heroSpecificAdvice.getAbilityTips(gameState);
+      if (abilityTips) {
+        const enriched = this.enrichAdvice(abilityTips, gameState, 'ability_usage');
+        if (enriched) return enriched;
+      }
+
+      // Priority 9: General strategic advice
       const strategicAdvice = this.generateStrategicAdvice(gameState);
       if (strategicAdvice) {
         const enriched = this.enrichAdvice(strategicAdvice, gameState, 'strategic');
         if (enriched) return enriched;
       }
 
-      // Priority 6: Check for "do nothing" state (for internal tracking)
+      // Priority 10: Check for "do nothing" state (for internal tracking)
       const doNothingState = doNothingDetector.detect(gameState);
       if (doNothingState) {
         const doNothingAdvice = doNothingDetector.createDoNothingAdvice(doNothingState, gameState);
@@ -246,11 +313,24 @@ export class CoachingEngine {
   }
 
   private generateStrategicAdvice(gameState: ProcessedGameState): CoachingAdvice | null {
-    // Check CS targets
+    // Check CS targets (more sensitive - trigger at 85% instead of 70%)
     const minuteMark = Math.floor(gameState.gameTime / 60);
-    const expectedCS = CS_TARGETS[minuteMark as keyof typeof CS_TARGETS];
+    let expectedCS: number | undefined;
     
-    if (expectedCS && gameState.player.lastHits < expectedCS * 0.7) {
+    // Get CS target for current minute
+    if (minuteMark <= 5) {
+      expectedCS = CS_TARGETS[5];
+    } else if (minuteMark <= 10) {
+      expectedCS = CS_TARGETS[10];
+    } else if (minuteMark <= 15) {
+      expectedCS = CS_TARGETS[15];
+    } else if (minuteMark <= 20) {
+      expectedCS = CS_TARGETS[20];
+    } else {
+      expectedCS = CS_TARGETS[20]; // Use 20min target for later
+    }
+    
+    if (expectedCS && gameState.player.lastHits < expectedCS * 0.85) {
       return {
         priority: 'MEDIUM',
         message: `CS: ${gameState.player.lastHits}/${expectedCS} - Focus farm, need gold for push timing`,
@@ -260,14 +340,14 @@ export class CoachingEngine {
       };
     }
 
-    // Check for objective opportunities
+    // Check for objective opportunities (more sensitive - trigger at 70% instead of 50%)
     const enemyBuildings = gameState.buildings[gameState.player.team === 'radiant' ? 'dire' : 'radiant'];
     const lowTowers = [
       ...(enemyBuildings.t1 || []),
       ...(enemyBuildings.t2 || [])
-    ].filter(t => !t.destroyed && t.healthPercent < 50 && t.healthPercent > 0);
+    ].filter(t => !t.destroyed && t.healthPercent < 70 && t.healthPercent > 0);
 
-    if (lowTowers.length > 0 && gameState.hero.healthPercent > 60) {
+    if (lowTowers.length > 0 && gameState.hero.healthPercent > 50) {
       return {
         priority: 'MEDIUM',
         message: `Enemy tower at ${Math.floor(lowTowers[0].healthPercent)}% - Finish it on next wave`,
@@ -292,6 +372,64 @@ export class CoachingEngine {
     }
 
     return null;
+  }
+
+  /**
+   * Generate periodic general advice (fallback when no specific advice)
+   * Public method so it can be called when forcing periodic advice
+   */
+  public generatePeriodicAdvice(gameState: ProcessedGameState): CoachingAdvice | null {
+    const phase = this.determineGamePhase(gameState.gameTime);
+    const minute = Math.floor(gameState.gameTime / 60);
+    
+    // Get CS target for current minute (use closest available target)
+    const getCSTarget = (min: number): number => {
+      if (min <= 5) return CS_TARGETS[5];
+      if (min <= 10) return CS_TARGETS[10];
+      if (min <= 15) return CS_TARGETS[15];
+      if (min <= 20) return CS_TARGETS[20];
+      return CS_TARGETS[20]; // Use 20min target for later game
+    };
+    
+    // Generate phase-appropriate general advice
+    const adviceMessages: Record<GamePhase, string[]> = {
+      laning: [
+        `Focus on last hits - aim for ${getCSTarget(minute)} CS by ${minute}min`,
+        'Secure runes at 2:00 and 4:00 for XP/gold advantage',
+        'Watch minimap for missing enemies - play safe',
+        'Stack camps when possible for later farm',
+        'Trade efficiently - use spells when enemy is out of position'
+      ],
+      midgame: [
+        'Group with team for objectives - don\'t farm alone',
+        'Control vision around Roshan pit',
+        'Push lanes before taking fights',
+        'Save buyback for important fights',
+        'Focus on taking T2 towers to open map'
+      ],
+      lategame: [
+        'Stick together - one pickoff can lose the game',
+        'Secure Aegis before highground push',
+        'Don\'t throw - wait for enemy mistakes',
+        'Control highground vision before pushing',
+        'Save buyback - critical for late game fights'
+      ]
+    };
+
+    const messages = adviceMessages[phase];
+    if (!messages || messages.length === 0) {
+      return null;
+    }
+
+    // Rotate through messages based on game time
+    const messageIndex = Math.floor(gameState.gameTime / 30) % messages.length;
+    
+    return {
+      priority: 'LOW',
+      message: messages[messageIndex],
+      timestamp: Date.now(),
+      gameTime: gameState.gameTime
+    };
   }
 
   /**

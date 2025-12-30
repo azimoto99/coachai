@@ -103,9 +103,20 @@ class Dota2Coach {
     if (!this.isCoachingActive) {
       logger.info('Auto-activating coaching - GSI data received');
       this.isCoachingActive = true;
-      // If we have a Steam bot but no active Steam ID, we'll work in log-only mode
-      if (!this.activeCoachingSteamID && this.steamBot) {
-        logger.info('Coaching active but no Steam ID set - will log advice only');
+      
+      // Try to get Steam ID from player data if available
+      if (!this.activeCoachingSteamID && gameState.player?.steamId) {
+        const playerSteamId = gameState.player.steamId;
+        logger.info(`Setting active Steam ID from player data: ${playerSteamId}`);
+        this.activeCoachingSteamID = playerSteamId;
+        
+        // Set it in the Steam bot if available
+        if (this.steamBot) {
+          this.steamBot.setActiveCoachingSteamID(playerSteamId);
+          this.steamBot.sendChatMessage(playerSteamId, 'Coaching activated! I\'ll provide advice during your match.');
+        }
+      } else if (!this.activeCoachingSteamID && this.steamBot) {
+        logger.info('Coaching active but no Steam ID available - will log advice only');
       }
     }
 
@@ -136,8 +147,9 @@ class Dota2Coach {
         }
       }
 
-      // Check compliance for previous advice
+      // Track combat outcomes for winrate calculation
       if (this.previousGameState && this.lastGameState) {
+        this.trackCombatOutcomes();
         this.checkComplianceForPreviousAdvice();
       }
 
@@ -165,6 +177,13 @@ class Dota2Coach {
         confidence: advice.confidence
       });
 
+      // Check for duplicate advice - don't send the same message twice in a row
+      const lastAdvice = Array.from(this.adviceTracking.values()).slice(-1)[0];
+      if (lastAdvice === advice.message) {
+        logger.debug('Duplicate advice detected, skipping');
+        return; // Don't spam the same message
+      }
+
       // Register advice with trust calibrator
       const adviceId = playerTrustCalibrator.registerAdvice(advice, gameState);
       this.adviceTracking.set(adviceId, advice.message);
@@ -185,6 +204,33 @@ class Dota2Coach {
       }
     } catch (error) {
       logger.error('Error handling game state update:', error);
+    }
+  }
+
+  private trackCombatOutcomes(): void {
+    if (!this.previousGameState || !this.lastGameState) return;
+
+    const prev = this.previousGameState;
+    const curr = this.lastGameState;
+
+    // Check if player got a kill (combat win)
+    if (curr.player.kills > prev.player.kills) {
+      winrateTracker.recordOutcome('win');
+      logger.debug('Combat outcome: WIN (kill recorded)');
+    }
+
+    // Check if player died (combat loss)
+    if (!curr.hero.alive && prev.hero.alive) {
+      winrateTracker.recordOutcome('loss');
+      logger.debug('Combat outcome: LOSS (death recorded)');
+    }
+
+    // Check if enemy died (combat win)
+    const prevAliveEnemies = prev.enemies.filter(e => e.alive).length;
+    const currAliveEnemies = curr.enemies.filter(e => e.alive).length;
+    if (currAliveEnemies < prevAliveEnemies && curr.hero.alive) {
+      winrateTracker.recordOutcome('win');
+      logger.debug('Combat outcome: WIN (enemy death)');
     }
   }
 
@@ -209,14 +255,20 @@ class Dota2Coach {
       // Record advice for post-game analysis
       postGameAnalyzer.recordAdvice(advice);
 
+      // Always log advice to console
+      const confidenceInfo = advice.confidence 
+        ? ` [Confidence: ${(advice.confidence * 100).toFixed(0)}%]`
+        : '';
+      logger.info(`[COACHING] ${message}${confidenceInfo}`);
+
+      // Try to send via Steam if available
       if (this.steamBot && this.steamBot.isReady()) {
-        await this.steamBot.sendCoachingMessage(message);
+        const sent = await this.steamBot.sendCoachingMessage(message);
+        if (!sent) {
+          logger.info('Advice logged to console (Steam message sending unavailable)');
+        }
       } else {
-        // Log-only mode with confidence info
-        const confidenceInfo = advice.confidence 
-          ? ` [Confidence: ${(advice.confidence * 100).toFixed(0)}%]`
-          : '';
-        logger.info(`[COACHING] ${message}${confidenceInfo}`);
+        logger.info('Advice logged to console (Steam bot not available)');
       }
 
       messageQueue.markSent(advice);

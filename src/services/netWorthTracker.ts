@@ -49,8 +49,8 @@ export class NetWorthTracker {
     const signals: string[] = [];
     let recommendation = '';
 
-    // Large lead analysis
-    if (delta > 8000) {
+    // Large lead analysis (more sensitive thresholds)
+    if (delta > 6000) { // Lowered from 8000
       signals.push('Large net worth lead');
       signals.push('Force objectives');
       recommendation = 'Large lead - force objectives, avoid risky fights';
@@ -63,15 +63,15 @@ export class NetWorthTracker {
         signals.push('Enemy core dead, no buyback');
         recommendation = 'END GAME NOW - Core dead, no buyback, huge lead';
       }
-    } else if (delta > 4000) {
+    } else if (delta > 3000) { // Lowered from 4000
       signals.push('Moderate net worth lead');
       signals.push('Push advantages');
       recommendation = 'Moderate lead - push objectives, trade safely';
-    } else if (delta > -2000 && delta < 2000) {
+    } else if (delta > -1500 && delta < 1500) { // Narrower range
       signals.push('Even net worth');
       signals.push('Avoid 5v5');
       recommendation = 'Even game - avoid 5v5, look for pickoffs';
-    } else if (delta < -4000) {
+    } else if (delta < -3000) { // Lowered from -4000
       signals.push('Net worth deficit');
       signals.push('Play defensively');
       recommendation = 'Behind - play defensively, farm safely, wait for mistakes';
@@ -136,12 +136,12 @@ export class NetWorthTracker {
     const last = this.history[this.history.length - 1];
     const previous = this.history[this.history.length - 2];
 
-    // Detect significant increase in team net worth (e.g., >2000 in short time)
+    // Detect significant increase in team net worth (lowered threshold from 2000 to 1500)
     const timeDelta = last.time - previous.time;
     const netWorthDelta = last.teamNW - previous.teamNW;
 
-    // Significant spike if >2000 gold in <60 seconds
-    if (timeDelta < 60 && netWorthDelta > 2000) {
+    // Significant spike if >1500 gold in <60 seconds
+    if (timeDelta < 60 && netWorthDelta > 1500) {
       return true;
     }
 
@@ -152,8 +152,8 @@ export class NetWorthTracker {
    * Get net worth-based push recommendation
    */
   public getPushRecommendation(analysis: NetWorthAnalysis, gameState: ProcessedGameState): string | null {
-    // Large lead + no buybacks → force objectives
-    if (analysis.delta > 8000) {
+    // Large lead + no buybacks → force objectives (lowered threshold from 8000 to 6000)
+    if (analysis.delta > 6000) {
       const deadEnemiesNoBuyback = gameState.enemies.filter(e => 
         !e.alive && !e.buybackAvailable
       );
@@ -162,12 +162,12 @@ export class NetWorthTracker {
       }
     }
 
-    // Small lead → trade safely, avoid 5v5
-    if (analysis.delta > 0 && analysis.delta < 4000) {
+    // Small lead → trade safely, avoid 5v5 (expanded range from 0-4000 to 0-5000)
+    if (analysis.delta > 0 && analysis.delta < 5000) {
       return 'Small lead → Trade safely, avoid 5v5';
     }
 
-    // Net worth spike → synchronize pushes
+    // Net worth spike → synchronize pushes (lowered threshold from 2000 to 1500)
     if (this.detectNetWorthSpike() && analysis.delta > 0) {
       return 'Net worth spike → Coordinate push now';
     }

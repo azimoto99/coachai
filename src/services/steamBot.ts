@@ -108,16 +108,21 @@ export class SteamBot {
     try {
       if (!this.isConnected) {
         logger.warn('Steam not connected, cannot send message');
+        logger.info(`[COACHING] ${message}`);
         return false;
       }
 
       if (!this.activeCoachingSteamID) {
-        logger.warn('No active coaching session, cannot send message');
+        logger.warn('No active coaching session Steam ID, logging advice to console');
+        logger.info(`[COACHING] ${message}`);
         return false;
       }
 
       // Send via Steam chat
       this.sendChatMessage(this.activeCoachingSteamID, message);
+      
+      // Also log to console for visibility
+      logger.info(`[COACHING] ${message}`);
       
       // Call callback if registered (for testing/monitoring)
       if (this.onMessageCallback) {
@@ -127,6 +132,8 @@ export class SteamBot {
       return true;
     } catch (error) {
       logger.error('Failed to send coaching message:', error);
+      // Still log the message even if sending fails
+      logger.info(`[COACHING] ${message}`);
       return false;
     }
   }

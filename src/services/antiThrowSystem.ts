@@ -8,6 +8,9 @@ import { CoachingAdvice, MessagePriority } from '../types/coaching';
 import { logger } from '../utils/logger';
 
 export class AntiThrowSystem {
+  private lastRoshWarning: number = 0;
+  private readonly ROSH_WARNING_COOLDOWN = 120000; // 2 minutes cooldown
+
   /**
    * Check for throw scenarios and return warnings
    */
@@ -75,13 +78,34 @@ export class AntiThrowSystem {
   }
 
   private checkRoshWithoutVision(gameState: ProcessedGameState): CoachingAdvice | null {
-    // Check if we're near Roshan pit and don't have vision
-    // This is simplified - full implementation needs position tracking
+    const now = Date.now();
+    
+    // Check cooldown - don't spam the same warning
+    if (now - this.lastRoshWarning < this.ROSH_WARNING_COOLDOWN) {
+      return null;
+    }
+
+    // Only warn if:
+    // 1. Roshan is alive (we can take it)
+    // 2. We're in mid/late game
+    // 3. Enemies are dead (we have opportunity)
+    // 4. We don't have detection/vision items
+    const hasVision = gameState.items.allItems.some(i => 
+      i.name.toLowerCase().includes('ward') ||
+      i.name.toLowerCase().includes('gem') ||
+      i.name.toLowerCase().includes('sentry')
+    );
+
+    const deadEnemies = gameState.enemies.filter(e => !e.alive).length;
+    const aliveEnemies = gameState.enemies.filter(e => e.alive).length;
+
     if (gameState.gameTime > 1200 && // After 20min
         gameState.hero.alive &&
-        !gameState.roshan.alive) {
-      // If we're attempting Roshan (would need position data)
-      // For now, we'll warn if Roshan is up and we're in mid-game
+        gameState.roshan.alive && // Roshan is alive (we can take it)
+        deadEnemies >= 2 && // At least 2 enemies dead
+        aliveEnemies <= 2 && // Max 2 enemies alive
+        !hasVision) { // No vision items
+      this.lastRoshWarning = now;
       return {
         priority: 'CRITICAL',
         message: "STOP ROSH - No vision, this is how you throw. Ward first.",
